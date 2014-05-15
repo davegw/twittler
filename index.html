@@ -14,13 +14,15 @@
         return moment(time).fromNow();
       }
 
-      $(document).ready(function(){
-        // Get user's twitter handle.
-        var defaultUser = "davegdub"//prompt("Please enter your twitter handle:") || "newbie";
+      // Get user's twitter handle.
+      var visitor = "davegdub";
+      // var visitor = prompt("Please enter your twitter handle:") || "newbie";
+      
 
+      $(document).ready(function(){
         // Prepare html to append to page.
         var $body = $('body');
-        var $nav = $("<div id='nav'><ul><li><h2>Home</h2></li><li><h2>@"+defaultUser+"</h2></li></div>");
+        var $nav = $("<div id='nav'><ul><li><h2 id='home'>Home</h2></li><li><h2 id='visitor'>@"+visitor+"</h2></li></div>");
         var $main = $("<div id='main'></div>");
         var $profile = $("<div id='profile'></div>");
         var $tweetList = $("<div id='tweet-master-container'></div>");
@@ -34,7 +36,7 @@
         $tweetList.append($tweetTitle).append($moreTweets).append($tweetContainer);
 
         // Global variables.
-        var lastTweet, loadedTweets, curProfile=defaultUser, lastProfileCount;
+        var lastTweet, loadedTweets, defaultUser = "home", curProfile=defaultUser, lastProfileCount;
 
         // Load the specified tweets in the right column.
         function loadTweets(start, end, highlight) {
@@ -59,7 +61,9 @@
           loadedTweets = end+1+hiddenTweetCount - start;
           // Count the current user's number of tweets.
           if (curProfile !== defaultUser) {
-            lastProfileCount = streams.users[curProfile].length;
+            var curUser = streams.users[curProfile];
+            // Handles edge case where a user has not created a tweet.
+            lastProfileCount = curUser ? curUser.length : 0;
           }
         }
 
@@ -67,14 +71,27 @@
         function loadProfile(user) {
           $("#profile").children().remove();
           var $profile = $('<div></div>');
+          // Handles home page profile.
           if (user === defaultUser) {
-            $profile.append('<h1 class="profile-name"> @'+user+'</h1><p><span>Total network tweets:</span>'+streams.home.length+'</p><p><span>Last network tweet:</span>'+timeConverter(streams.home[streams.home.length-1].created_at)+'</p>');
+            $profile.append('<h1 class="profile-name profile-home"> @'+visitor+'</h1><p><span>Total network tweets:</span>'+streams.home.length+'</p><p><span>Last network tweet:</span>'+timeConverter(streams.home[streams.home.length-1].created_at)+'</p>');
           }
           else {
             var profileTweets = streams.users[user];
-            $profile.append('<h1 class="profile-name"> @'+user+'</h1><p><span>Total tweets:</span>'+profileTweets.length+'</p><p><span>Last tweet:</span>'+timeConverter(profileTweets[profileTweets.length-1].created_at)+'</p>');
+            // Handles edge case where user has not created a tweet.
+            if (profileTweets === undefined) {
+              $profile.append('<h1 class="profile-name"> @'+user+'</h1><p><span>Total tweets:</span>0</p><p><span>Last tweet:</span>None</p>');
+            }
+            // Handles selected user profiles.
+            else {
+              $profile.append('<h1 class="profile-name"> @'+user+'</h1><p><span>Total tweets:</span>'+profileTweets.length+'</p><p><span>Last tweet:</span>'+timeConverter(profileTweets[profileTweets.length-1].created_at)+'</p>');
+            }
           }
           $profile.appendTo('#profile');
+          // Add write tweet feature if on the home page or on the visitor user's profile.
+          if (user === visitor || user === defaultUser) {
+            $("#profile h1").after("<div id='write-tweet'><textarea rows=3 placeholder='Compose new Tweet...'></textarea><input type='submit' value='Tweet'></input><div>");
+            $(".profile-home").next("#write-tweet").before("<div id='show-tweet'><a href='#'>New Tweet</a></div>").hide();
+          }
           curProfile = user;
         }
         
@@ -93,19 +110,30 @@
         $("#tweet-container").on("click", "a", function(){
           var user = $(this).closest(".tweet").data("user");
           curProfile = user;
-          $("#tweet-container .tweet").hide();
-          $("#tweet-container .tweet").filter("."+user).show();
-          userSwitcher();
+          filteredUserSwitcher();
+        });
+
+        // Navigation click handler for viewing visitor's profile.
+        $("#nav").on("click", "#visitor", function() {
+          curProfile = visitor;
+          filteredUserSwitcher();
         });
 
         // Click handler for returning to home page.
-        $("#nav").on("click", "h2", function() {
+        $("#nav").on("click", "#home", function() {
           curProfile = defaultUser;
           userSwitcher();
           $('#tweet-container .tweet').show();
         });
 
-        // Perform these actions when a new user profile is selected.
+        // Perform these actions when a specific user profile is selected to filter tweets.
+        var filteredUserSwitcher = function() {
+          $("#tweet-container .tweet").hide();
+          $("#tweet-container .tweet").filter("."+curProfile).show();
+          userSwitcher();
+        }
+
+        // Perform these actions when any profile is selected.
         var userSwitcher = function() {
           loadProfile(curProfile);
           $("#more-tweets").trigger("click");
@@ -128,20 +156,19 @@
             $("#more-tweets").text("Load "+(streams.home.length-lastTweet)+" more tweets");
           }
           else {
-            $("#more-tweets").text("Load "+(streams.users[user].length-lastProfileCount)+" more tweets from @"+user);
+            $("#more-tweets").text("Load "+((streams.users[user] ? streams.users[user].length : 0)-lastProfileCount)+" more tweets from @"+user);
           }
         }
 
         // Periodically update tweet count and profile stats.
         setInterval(function() {
           tweetCounter(curProfile);
-          loadProfile(curProfile);
+          // loadProfile(curProfile);
         }, 5000);
 
         // Update time stamps every 20 seconds.
         setInterval(function() {
           updateTime();
-          console.log("hey")
         }, 20000);
 
         // Handle mouseover events for tweets.
@@ -150,6 +177,20 @@
         });
         $("#tweet-container").on("mouseleave", ".tweet", function() {
           $(this).removeClass("focused");
+        });
+
+        // Handle tweet submission.
+        $("#profile").on("click", "#write-tweet input[type='submit']", function() {
+          var msg = $(this).prev("textarea");
+          writeTweet(msg.val());
+          msg.val("");
+          $(this).effect("highlight", {color: "#55acee"}, 100).blur();
+          loadTweets(lastTweet, streams.home.length-1, true);
+        });
+
+        // Toggle tweet input field from home page.
+        $("#profile").on("click", "#show-tweet", function() {
+          $("#write-tweet").toggle();
         });
       });
     </script>

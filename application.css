@@ -33,16 +33,34 @@ body, div {
   background-color: #fff;
   padding: 15px;
 }
-#profile span {
+#profile span, #profile #show-tweet {
   display: block;
+  font-size: 18px;
   font-weight: bold;
 }
 #profile p {
-  font-size: 18px;
   color: #66757f;
 }
 #profile h1 {
   margin-top: 0;
+}
+#profile #write-tweet textarea {
+  display: block;
+  width: 300px;
+  font-size: 14px;
+}
+#profile #write-tweet input {
+  display: block;
+  background-color: #3b88c3;
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: bold;
+}
+#profile #write-tweet input:hover {
+  background-color: #0084B4;
+  cursor: pointer;
 }
 #tweet-master-container {
   margin-left: 20px;
