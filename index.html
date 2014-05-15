@@ -45,7 +45,7 @@
           while(index <= end){
             var tweet = streams.home[index];
             var $tweet = $('<div></div>');
-            $tweet.append('<div class="user-name"><a href="#">@'+tweet.user+'</a><span>'+timeConverter(tweet.created_at)+'</span></div><div class="message">'+ tweet.message + '</div>');
+            $tweet.append('<div class="user-name"><a class="name-link" href="#">@'+tweet.user+'</a><span class="user-time">'+timeConverter(tweet.created_at)+'</span><span class="retweet options"><a href="#">Retweet</a></span><span class="reply options"><a href="#">Reply</a></span></div><div class="message">'+ tweet.message + '</div>');
             $tweet.addClass(highlight && "highlight").addClass(tweet.user+" tweet").data("user", tweet.user).data("time", tweet.created_at);
             $tweet.prependTo('#tweet-container');
             $tweet.filter(".highlight").effect("highlight", {color: "#F3F781"}, 2000);
@@ -87,10 +87,18 @@
             }
           }
           $profile.appendTo('#profile');
-          // Add write tweet feature if on the home page or on the visitor user's profile.
-          if (user === visitor || user === defaultUser) {
-            $("#profile h1").after("<div id='write-tweet'><textarea rows=3 placeholder='Compose new Tweet...'></textarea><input type='submit' value='Tweet'></input><div>");
-            $(".profile-home").next("#write-tweet").before("<div id='show-tweet'><a href='#'>New Tweet</a></div>").hide();
+          // Add write tweet feature. Place on page depending on current user.
+          $newTweet = $("<div id='write-tweet'><textarea rows=3 placeholder='Compose new Tweet...'></textarea><input type='submit' value='Tweet'></input><div>");
+          if (user === visitor || user == defaultUser) {
+            $("#profile h1").after($newTweet);
+          }
+          else {
+            $("#profile").append($newTweet);
+          }
+          $showTweetButton = $("#write-tweet").before("<div id='show-tweet'><a href='#'>New Tweet</a></div>");
+          if (user !== visitor) {
+            $showTweetButton;
+            $newTweet.hide();
           }
           curProfile = user;
         }
@@ -107,7 +115,7 @@
         });
 
         // Click handler for selecting and displaying user profiles and tweets.
-        $("#tweet-container").on("click", "a", function(){
+        $("#tweet-container").on("click", "a.name-link", function(){
           var user = $(this).closest(".tweet").data("user");
           curProfile = user;
           filteredUserSwitcher();
@@ -143,7 +151,7 @@
         function updateTime() {
           $(".tweet").each(function() {
             var $item = $(this);
-            $item.find(".user-name span").text(timeConverter($item.data("time")));
+            $item.find(".user-name span.user-time").text(timeConverter($item.data("time")));
           });
         }
         
@@ -191,6 +199,23 @@
         // Toggle tweet input field from home page.
         $("#profile").on("click", "#show-tweet", function() {
           $("#write-tweet").toggle();
+        });
+
+        // Retweet click handler.
+        $("#tweet-container").on("click", ".retweet", function() {
+          var rt = $(this).closest(".tweet").find(".message").text();
+          var user = $(this).closest(".tweet").data("user");
+          $("#write-tweet").show();
+          $("#write-tweet textarea").val("RT @"+user+": "+rt);
+          $("textarea").focus();
+        });
+
+        // Reply click handler.
+        $("#tweet-container").on("click", ".reply", function() {
+          var user = $(this).closest(".tweet").data("user");
+          $("#write-tweet").show();
+          $("#write-tweet textarea").val("@"+user+" ");
+          $("textarea").focus();
         });
       });
     </script>

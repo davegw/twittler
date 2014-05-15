@@ -117,8 +117,21 @@ a, a:visited {
   font-weight: bold;
   font-size: 16px;
 }
-.user-name span {
+.user-name span.user-time {
   margin-left: 10px;
   color: #8899a6;
   font-size: 14px;
+}
+.user-name span.options {
+  float: right;
+}
+.retweet {
+  margin-left: 10px;
+}
+.options a {
+  color: #e1e8ed;
+  font-size: 14px;
+}
+.tweet.focused .user-name span.options a {
+  color: #0084B4;
 }
