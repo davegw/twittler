@@ -15,14 +15,13 @@
       }
 
       // Get user's twitter handle.
-      var visitor = "davegdub";
-      // var visitor = prompt("Please enter your twitter handle:") || "newbie";
+      var visitor = prompt("Please enter your twitter handle:") || "newbie";
       
 
       $(document).ready(function(){
         // Prepare html to append to page.
         var $body = $('body');
-        var $nav = $("<div id='nav'><ul><li><h2 id='home'>Home</h2></li><li><h2 id='visitor'>@"+visitor+"</h2></li></div>");
+        var $nav = $("<div id='nav'><ul><li class='nav-item'><h2 id='home'>Home</h2></li><li class='nav-item'><h2 id='visitor'>@"+visitor+"</h2></li><li id='auto-load'>Auto-load Tweets: <input type='radio' name='auto-load' value='On'>On<input type='radio' name='auto-load' value='off' checked>Off</li></div>");
         var $main = $("<div id='main'></div>");
         var $profile = $("<div id='profile'></div>");
         var $tweetList = $("<div id='tweet-master-container'></div>");
@@ -36,7 +35,7 @@
         $tweetList.append($tweetTitle).append($moreTweets).append($tweetContainer);
 
         // Global variables.
-        var lastTweet, loadedTweets, defaultUser = "home", curProfile=defaultUser, lastProfileCount;
+        var lastTweet, loadedTweets, defaultUser = "home", curProfile=defaultUser, lastProfileCount, autoLoad;
 
         // Load the specified tweets in the right column.
         function loadTweets(start, end, highlight) {
@@ -156,7 +155,9 @@
         }
         
         // Interval for loading new tweets automatically.
-        // setInterval(function() {$("#more-tweets").trigger("click")}, 20000);
+        var autoLoadInterval = function() {
+          autoLoad = setInterval(function() {$("#more-tweets").trigger("click")}, 3000);
+        }
         
         // Calculate number of new tweets since last load.
         function tweetCounter(user) {
@@ -216,6 +217,15 @@
           $("#write-tweet").show();
           $("#write-tweet textarea").val("@"+user+" ");
           $("textarea").focus();
+        });
+
+        // Handle auto-load radio buttons.
+        $("li#auto-load").on("change", "input[name='auto-load']", function() {
+          $("#more-tweets").toggle();
+          if ($(this).val() === "On") {
+            return autoLoadInterval();
+          }
+          clearInterval(autoLoad);
         });
       });
     </script>
