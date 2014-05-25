@@ -6,6 +6,8 @@
     <script src="http://ajax.googleapis.com/ajax/libs/jqueryui/1.10.4/jquery-ui.min.js"></script>
     <script src="moment.min.js"></script>
     <script src="data_generator.js"></script>
+    <script src="underscore.js"></script>
+    <script src="backbone.js"></script>
   </head>
   <body>
     <script>
@@ -15,7 +17,9 @@
       }
 
       // Get user's twitter handle.
-      var visitor = prompt("Please enter your twitter handle:") || "newbie";
+      // var visitor = prompt("Please enter your twitter handle:") || "newbie";
+      var visitor = "dave";
+      streams.users[visitor] = [];
       
 
       $(document).ready(function(){
@@ -34,119 +38,309 @@
         $main.append($profile).append($tweetList);
         $tweetList.append($tweetTitle).append($moreTweets).append($tweetContainer);
 
+        var Profile = Backbone.Model.extend({
+          defaults: function() {
+            return {
+              tweets: 0,
+              lastTweet: "None"
+            };
+          }
+        });
+
+        var ProfileList = Backbone.Collection.extend({
+          model: Profile,
+          focusOnItem: function(user) {
+            var focus = this.filter(function(item, index) {
+              return item.get("user") == user;
+            }, this);
+            var focusProfile = new Profile(focus[0].toJSON());
+            this.reset(focusProfile.toJSON());
+          },
+          addProfile: function(itemJSON) {
+            this.add(itemJSON);
+          }
+        });
+
+        var ProfileView = Backbone.View.extend({
+          initialize: function() {
+            this.model.on("change", this.render, this);
+          },
+          template: _.template('<h1 class="profile-name profile-home"> @<%=user%></h1><p><span>Total network tweets:</span><%=tweets%></p><p><span>Last network tweet:</span><%=lastTweet%></p><div id="write-tweet"><textarea rows=3 placeholder="Compose new Tweet...""></textarea><input type="submit" value="Tweet"></input><div>'),
+          render: function() {
+            this.$el.html(this.template(this.model.toJSON()));
+            return this;
+          }
+        });
+
+        var ProfileListView = Backbone.View.extend({
+          el: $("#profile"),
+          initialize: function() {
+            this.collection.on("reset", this.addAll, this);
+            this.collection.on("add", this.addOne, this);
+          },
+          render: function() {
+            this.collection.forEach(this.addOne, this);
+            return this;
+          }, 
+          addOne: function(profileItem) {
+              var profileView = new ProfileView({model:profileItem});
+              this.$el.html(profileView.render().el);
+          },
+          addAll: function() {
+            this.collection.forEach(this.addOne, this);
+          }
+        });
+
+        var profileList = new ProfileList();
+        var tempUsers = users.slice(0);
+        tempUsers.push(visitor);
+        _.each(tempUsers, function(item, index) {
+          var profileTweets = streams.users[item];
+          var profile = new Profile({user:item, tweets:profileTweets.length});
+          if (profile.get("tweets") > 0) {
+            profile.set({lastTweet:profileTweets[profileTweets.length-1].created_at});
+          }
+          profileList.add(profile);
+        });
+
+        var ProfileRouter = Backbone.Router.extend({
+          initialize: function(options) {
+            this.collection = options.profileList;
+          },
+          routes: {
+            "hi": "index",
+            "users/:user": "show"
+          },
+          index: function() {
+            alert("howdy");
+          },
+          start: function() {
+            Backbone.history.start({pushState:true});
+          },
+          show: function(user) {
+            this.collection.focusOnItem(user);
+          }
+        });
+
+        function getBBProfile(user) {
+          var profile = profileList.detect(function(item){
+            return item.get("user") == user;
+          });
+          profileList.addProfile(profile.toJSON());
+        }
+
+        var profileListView = new ProfileListView({collection:profileList});
+        $("#profile").append(profileListView.render().el);
+        
+        var go = new ProfileRouter({profileList:profileList});
+        go.start();
+        /*--------------------TWEET--------------------*/
+
+        var Tweet = Backbone.Model.extend();
+
+        var TweetView = Backbone.View.extend({
+          template: _.template('<div class="user-name"><a class="name-link" href="#">@<%=user%></a><span class="user-time"><%=timeConverter(created_at)%></span><span class="retweet options"><a href="#">Retweet</a></span><span class="reply options"><a href="#">Reply</a></span></div><div class="message"><%=message%></div>'),
+          className: "tweet",
+          events: {
+            "click .retweet": "retweet",
+            "click .reply": "reply",
+            "click a.name-link": "addPro"
+          },
+          render: function() {
+            this.$el.html(this.template(this.model.toJSON()));
+            return this;
+          },
+          retweet: function() {
+            var rt = this.model.get("message");
+            var user = this.model.get("user");
+            $("#write-tweet").show();
+            $("#write-tweet textarea").val("RT @"+user+": "+rt);
+            $("textarea").focus();
+          },
+          reply: function() {
+            var user = this.model.get("user")
+            $("#write-tweet").show();
+            $("#write-tweet textarea").val("@"+user+" ");
+            $("textarea").focus();
+          },
+          addPro: function() {
+            console.log(this.model);
+            var user = this.model.get("user");
+            getBBProfile(user);
+            $("#more-tweets").trigger("click");
+            getUserTweets(user);
+          }
+        });
+
+        var TweetList = Backbone.Collection.extend({
+          model: Tweet
+        });
+
+        var TweetListView = Backbone.View.extend({
+          initialize: function() {
+            this.collection.on("reset", function() {
+              this.$el.children().remove();
+              this.render();
+            }, this);
+          },
+          el: $("#tweet-container"),
+          render: function() {
+            this.collection.forEach(this.addOne, this)
+          },
+          addOne: function(item) {
+            var tweet = new Tweet(item.toJSON());
+            var tweetView = new TweetView({model: tweet});
+            this.$el.prepend(tweetView.render().el);
+          }
+        })
+
+        var tweetList = new TweetList;
+        function getBBTweets() {
+          var tweetJSON = _.map(streams.home, function(item) {
+            return {user:item.user, created_at:item.created_at, message:item.message};
+          });
+          tweetList.reset(tweetJSON);
+        }
+        function getUserTweets(user) {
+          var tweetJSON = _.map(streams.users[user], function(item) {
+            return {user:item.user, created_at:item.created_at, message:item.message};
+          });
+          tweetList.reset(tweetJSON);
+        }
+        getBBTweets();
+        
+        var tweetListView = new TweetListView({collection:tweetList});
+        tweetListView.render();
+        $("#tweet-container").append(tweetListView.el);
+
+
+
+        setInterval(function() {
+          profileList.forEach(function(item, index) {
+            item.set({tweets: streams.users[item.get("user")].length});
+            if (item.get("tweets") > 0) {
+              item.set({lastTweet:streams.users[item.get("user")][streams.users[item.get("user")].length-1].created_at});
+            }
+          });
+        }, 5000);
+
+
+        /*-------------------OLD MODEL---------------*/
+
+
         // Global variables.
         var lastTweet, loadedTweets, defaultUser = "home", curProfile=defaultUser, lastProfileCount, autoLoad;
 
         // Load the specified tweets in the right column.
-        function loadTweets(start, end, highlight) {
-          var index = start, hiddenTweetCount = 0;
-          var highlight = highlight || "";
-          while(index <= end){
-            var tweet = streams.home[index];
-            var $tweet = $('<div></div>');
-            $tweet.append('<div class="user-name"><a class="name-link" href="#">@'+tweet.user+'</a><span class="user-time">'+timeConverter(tweet.created_at)+'</span><span class="retweet options"><a href="#">Retweet</a></span><span class="reply options"><a href="#">Reply</a></span></div><div class="message">'+ tweet.message + '</div>');
-            $tweet.addClass(highlight && "highlight").addClass(tweet.user+" tweet").data("user", tweet.user).data("time", tweet.created_at);
-            $tweet.prependTo('#tweet-container');
-            $tweet.filter(".highlight").effect("highlight", {color: "#F3F781"}, 2000);
-            // Hide tweets from others if a specific user is selected.
-            if (curProfile !== defaultUser && tweet.user !== curProfile) {
-              hiddenTweetCount--;
-              $tweet.hide();
-            }
-            index++;
-          }
-          // Log the last tweet and count the number of tweets loaded.
-          lastTweet = end+1;
-          loadedTweets = end+1+hiddenTweetCount - start;
-          // Count the current user's number of tweets.
-          if (curProfile !== defaultUser) {
-            var curUser = streams.users[curProfile];
-            // Handles edge case where a user has not created a tweet.
-            lastProfileCount = curUser ? curUser.length : 0;
-          }
-        }
+        // function loadTweets(start, end, highlight) {
+        //   var index = start, hiddenTweetCount = 0;
+        //   var highlight = highlight || "";
+        //   while(index <= end){
+        //     var tweet = streams.home[index];
+        //     var $tweet = $('<div></div>');
+        //     $tweet.append('<div class="user-name"><a class="name-link" href="#">@'+tweet.user+'</a><span class="user-time">'+timeConverter(tweet.created_at)+'</span><span class="retweet options"><a href="#">Retweet</a></span><span class="reply options"><a href="#">Reply</a></span></div><div class="message">'+ tweet.message + '</div>');
+        //     $tweet.addClass(highlight && "highlight").addClass(tweet.user+" tweet").data("user", tweet.user).data("time", tweet.created_at);
+        //     $tweet.prependTo('#tweet-container');
+        //     $tweet.filter(".highlight").effect("highlight", {color: "#F3F781"}, 2000);
+        //     // Hide tweets from others if a specific user is selected.
+        //     if (curProfile !== defaultUser && tweet.user !== curProfile) {
+        //       hiddenTweetCount--;
+        //       $tweet.hide();
+        //     }
+        //     index++;
+        //   }
+        //   // Log the last tweet and count the number of tweets loaded.
+        //   lastTweet = end+1;
+        //   loadedTweets = end+1+hiddenTweetCount - start;
+        //   // Count the current user's number of tweets.
+        //   if (curProfile !== defaultUser) {
+        //     var curUser = streams.users[curProfile];
+        //     // Handles edge case where a user has not created a tweet.
+        //     lastProfileCount = curUser ? curUser.length : 0;
+        //   }
+        // }
 
         // Load the user's profile in the left column.
-        function loadProfile(user) {
-          $("#profile").children().remove();
-          var $profile = $('<div></div>');
-          // Handles home page profile.
-          if (user === defaultUser) {
-            $profile.append('<h1 class="profile-name profile-home"> @'+visitor+'</h1><p><span>Total network tweets:</span>'+streams.home.length+'</p><p><span>Last network tweet:</span>'+timeConverter(streams.home[streams.home.length-1].created_at)+'</p>');
-          }
-          else {
-            var profileTweets = streams.users[user];
-            // Handles edge case where user has not created a tweet.
-            if (profileTweets === undefined) {
-              $profile.append('<h1 class="profile-name"> @'+user+'</h1><p><span>Total tweets:</span>0</p><p><span>Last tweet:</span>None</p>');
-            }
-            // Handles selected user profiles.
-            else {
-              $profile.append('<h1 class="profile-name"> @'+user+'</h1><p><span>Total tweets:</span>'+profileTweets.length+'</p><p><span>Last tweet:</span>'+timeConverter(profileTweets[profileTweets.length-1].created_at)+'</p>');
-            }
-          }
-          $profile.appendTo('#profile');
-          // Add write tweet feature. Place on page depending on current user.
-          $newTweet = $("<div id='write-tweet'><textarea rows=3 placeholder='Compose new Tweet...'></textarea><input type='submit' value='Tweet'></input><div>");
-          if (user === visitor || user == defaultUser) {
-            $("#profile h1").after($newTweet);
-          }
-          else {
-            $("#profile").append($newTweet);
-          }
-          $showTweetButton = $("#write-tweet").before("<div id='show-tweet'><a href='#'>New Tweet</a></div>");
-          if (user !== visitor) {
-            $showTweetButton;
-            $newTweet.hide();
-          }
-          curProfile = user;
-        }
+        // function loadProfile(user) {
+        //   $("#profile").children().remove();
+        //   var $profile = $('<div></div>');
+        //   // Handles home page profile.
+        //   if (user === defaultUser) {
+        //     $profile.append('<h1 class="profile-name profile-home"> @'+visitor+'</h1><p><span>Total network tweets:</span>'+streams.home.length+'</p><p><span>Last network tweet:</span>'+timeConverter(streams.home[streams.home.length-1].created_at)+'</p>');
+        //   }
+        //   else {
+        //     var profileTweets = streams.users[user];
+        //     // Handles edge case where user has not created a tweet.
+        //     if (profileTweets === undefined) {
+        //       $profile.append('<h1 class="profile-name"> @'+user+'</h1><p><span>Total tweets:</span>0</p><p><span>Last tweet:</span>None</p>');
+        //     }
+        //     // Handles selected user profiles.
+        //     else {
+        //       $profile.append('<h1 class="profile-name"> @'+user+'</h1><p><span>Total tweets:</span>'+profileTweets.length+'</p><p><span>Last tweet:</span>'+timeConverter(profileTweets[profileTweets.length-1].created_at)+'</p>');
+        //     }
+        //   }
+        //   $profile.appendTo('#profile');
+        //   // Add write tweet feature. Place on page depending on current user.
+        //   $newTweet = $("<div id='write-tweet'><textarea rows=3 placeholder='Compose new Tweet...'></textarea><input type='submit' value='Tweet'></input><div>");
+        //   if (user === visitor || user == defaultUser) {
+        //     $("#profile h1").after($newTweet);
+        //   }
+        //   else {
+        //     $("#profile").append($newTweet);
+        //   }
+        //   $showTweetButton = $("#write-tweet").before("<div id='show-tweet'><a href='#'>New Tweet</a></div>");
+        //   if (user !== visitor) {
+        //     $showTweetButton;
+        //     $newTweet.hide();
+        //   }
+        //   curProfile = user;
+        // }
         
         // On initial page load, load tweets and default profile.
-        loadTweets(0, streams.home.length - 1);
-        loadProfile(curProfile);
+        // loadTweets(0, streams.home.length - 1);
+        // loadProfile(curProfile);
 
-        // Click handler for loading more tweets.
+        // =====Click handler for loading more tweets.
         $("#more-tweets").on("click", function() {
           $('.highlight').removeClass('highlight');
-          loadTweets(lastTweet, streams.home.length-1, true);
-          $("#more-tweets").text(loadedTweets+" tweets loaded");
+          getBBTweets();
+          $("#more-tweets").text("All tweets loaded");
         });
 
         // Click handler for selecting and displaying user profiles and tweets.
-        $("#tweet-container").on("click", "a.name-link", function(){
-          var user = $(this).closest(".tweet").data("user");
-          curProfile = user;
-          filteredUserSwitcher();
-        });
+        // $("#tweet-container").on("click", "a.name-link", function(){
+        //   var user = $(this).closest(".tweet").data("user");
+        //   curProfile = user;
+        //   filteredUserSwitcher();
+        // });
 
-        // Navigation click handler for viewing visitor's profile.
+        // ====Navigation click handler for viewing visitor's profile.
         $("#nav").on("click", "#visitor", function() {
-          curProfile = visitor;
-          filteredUserSwitcher();
-        });
-
-        // Click handler for returning to home page.
-        $("#nav").on("click", "#home", function() {
-          curProfile = defaultUser;
-          userSwitcher();
-          $('#tweet-container .tweet').show();
-        });
-
-        // Perform these actions when a specific user profile is selected to filter tweets.
-        var filteredUserSwitcher = function() {
-          $("#tweet-container .tweet").hide();
-          $("#tweet-container .tweet").filter("."+curProfile).show();
-          userSwitcher();
-        }
-
-        // Perform these actions when any profile is selected.
-        var userSwitcher = function() {
-          loadProfile(curProfile);
+          getBBProfile(visitor);
           $("#more-tweets").trigger("click");
-        }
+          getUserTweets(visitor);
+        });
 
-        // Updates the time of existing tweets.
+        // ====Click handler for returning to home page.
+        $("#nav").on("click", "#home", function() {
+          getBBProfile(visitor);
+          $("#more-tweets").trigger("click");
+        });
+
+        // // Perform these actions when a specific user profile is selected to filter tweets.
+        // var filteredUserSwitcher = function() {
+        //   $("#tweet-container .tweet").hide();
+        //   $("#tweet-container .tweet").filter("."+curProfile).show();
+        //   userSwitcher();
+        // }
+
+        // // Perform these actions when any profile is selected.
+        // var userSwitcher = function() {
+        //   loadProfile(curProfile);
+        //   $("#more-tweets").trigger("click");
+        // }
+
+        // ======Updates the time of existing tweets.
         function updateTime() {
           $(".tweet").each(function() {
             var $item = $(this);
@@ -154,33 +348,27 @@
           });
         }
         
-        // Interval for loading new tweets automatically.
+        // =====Interval for loading new tweets automatically.
         var autoLoadInterval = function() {
           autoLoad = setInterval(function() {$("#more-tweets").trigger("click")}, 3000);
         }
         
         // Calculate number of new tweets since last load.
-        function tweetCounter(user) {
-          if (user === defaultUser) {
-            $("#more-tweets").text("Load "+(streams.home.length-lastTweet)+" more tweets");
-          }
-          else {
-            $("#more-tweets").text("Load "+((streams.users[user] ? streams.users[user].length : 0)-lastProfileCount)+" more tweets from @"+user);
-          }
+        function tweetCounter() {
+          $("#more-tweets").text("Load "+(streams.home.length-tweetList.length)+" more tweets");
         }
 
         // Periodically update tweet count and profile stats.
         setInterval(function() {
-          tweetCounter(curProfile);
-          // loadProfile(curProfile);
+          tweetCounter();
         }, 5000);
 
-        // Update time stamps every 20 seconds.
+        // =======Update time stamps every 20 seconds.
         setInterval(function() {
           updateTime();
         }, 20000);
 
-        // Handle mouseover events for tweets.
+        // =======Handle mouseover events for tweets.
         $("#tweet-container").on("mouseenter", ".tweet", function() {
           $(this).addClass("focused");
         });
@@ -188,13 +376,13 @@
           $(this).removeClass("focused");
         });
 
-        // Handle tweet submission.
+        // ======Handle tweet submission.
         $("#profile").on("click", "#write-tweet input[type='submit']", function() {
           var msg = $(this).prev("textarea");
           writeTweet(msg.val());
           msg.val("");
           $(this).effect("highlight", {color: "#55acee"}, 100).blur();
-          loadTweets(lastTweet, streams.home.length-1, true);
+          getBBTweets();
         });
 
         // Toggle tweet input field from home page.
@@ -202,24 +390,12 @@
           $("#write-tweet").toggle();
         });
 
-        // Retweet click handler.
-        $("#tweet-container").on("click", ".retweet", function() {
-          var rt = $(this).closest(".tweet").find(".message").text();
-          var user = $(this).closest(".tweet").data("user");
-          $("#write-tweet").show();
-          $("#write-tweet textarea").val("RT @"+user+": "+rt);
-          $("textarea").focus();
-        });
+        // =====Retweet click handler.
+        
 
-        // Reply click handler.
-        $("#tweet-container").on("click", ".reply", function() {
-          var user = $(this).closest(".tweet").data("user");
-          $("#write-tweet").show();
-          $("#write-tweet textarea").val("@"+user+" ");
-          $("textarea").focus();
-        });
+        // =======Reply click handler.
 
-        // Handle auto-load radio buttons.
+        // ======Handle auto-load radio buttons.
         $("li#auto-load").on("change", "input[name='auto-load']", function() {
           $("#more-tweets").toggle();
           if ($(this).val() === "On") {
